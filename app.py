@@ -148,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError('Сұрау пішімі жарамсыз.')
             if self.path == '/api/status':
-                return self.send_json(200, ai_chat.public_status())
+                return self.send_json(200, ai_chat.public_status(data.get('provider', 'openai')))
             language = languages.validate(data.get('language', 'kk-KZ'))
             if self.path == '/api/catalog':
                 return self.send_json(200, desktop.catalog())
@@ -176,7 +176,7 @@ class Handler(BaseHTTPRequestHandler):
                 action = parsed['action'] if parsed else None
                 argument = parsed.get('argument', '') if parsed else ''
                 if action is None and mode != 'command':
-                    return self.send_json(200, ai_chat.ask(text, data.get('history', []), language))
+                    return self.send_json(200, ai_chat.ask(text, data.get('history', []), language, data.get('provider', 'openai'), data.get('web_search', False)))
             result = execute(action, language, argument)
             result['language'] = language
             result['source'] = 'local'
