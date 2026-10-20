@@ -1,0 +1,47 @@
+JARVIS ЖОБАСЫН GITHUB-ПЕН БАЙЛАНЫСТЫРУ
+
+1. Git орнатыңыз: https://git-scm.com/downloads/win
+2. https://github.com/new бетінде jarvis-windows атты бос репозиторий жасаңыз.
+   Қолжетімділігін өзіңіз таңдаңыз. README, .gitignore, License қоспай, бос күйде жасаңыз.
+3. JARVIS_Windows бумасынан Git Bash ашыңыз.
+4. Git-ті алғаш қолдансаңыз, өз мәліметтеріңізбен баптаңыз:
+
+git config --global user.name "Your Name"
+git config --global user.email "your-email@example.com"
+
+5. Пәрмендерді ретімен орындаңыз:
+
+git init -b main
+git add .
+git status
+git commit -m "Add JARVIS assistant with AI chat"
+git remote add origin https://github.com/USERNAME/jarvis-windows.git
+git push -u origin main
+
+USERNAME орнына өз логиніңізді жазыңыз немесе репозиторийдің нақты HTTPS URL мекенжайын қолданыңыз.
+Кіру сұралса, браузерде өз GitHub аккаунтыңызбен кіріңіз.
+Commit алдында git status тізімінде ai_config.local.json, .env, .venv болмауы керек.
+.gitignore оларды шығарады. git add -f қолданбаңыз. API кілтін кодқа не README-ге қоймаңыз.
+
+6. Кейін өзгерістерді жіберу:
+
+git add .
+git commit -m "Update JARVIS"
+git push
+
+7. Репозиторийден жаңарту алу (алдымен жергілікті өзгерістеріңізді сақтаңыз):
+
+git pull --ff-only
+
+Бұл команда біріктіру қажет болғанда тоқтайды, жергілікті өзгерістерді автоматты түрде үстінен жазбайды.
+
+ГРАФИКАЛЫҚ БАЛАМА
+GitHub Desktop арқылы жергілікті репозиторийді қосып, Publish repository таңдауға болады.
+https://desktop.github.com/
+
+GitHub кодты сақтайды. Жобаны компьютерде іске қосу үшін START.bat қажет.
+GitHub Pages Python серверін немесе жергілікті Word бағдарламасын іске қоспайды.
+AI қосылымын SETUP_AI.bat арқылы бөлек баптаңыз.
+
+Ресми нұсқаулық:
+https://docs.github.com/en/migrations/importing-source-code/using-the-command-line-to-import-source-code/adding-locally-hosted-code-to-github

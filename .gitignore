@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+ai_config.local.json
+ai_config.local.tmp
+.env
+.env.*
+!.env.example
+*.log
+*.zip

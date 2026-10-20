@@ -1,0 +1,4 @@
+{
+  "api_key": "PUT_YOUR_KEY_IN_ai_config.local.json_ONLY",
+  "model": "gpt-5-mini"
+}
