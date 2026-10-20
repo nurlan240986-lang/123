@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import threading
+import tempfile
 import unittest
 from unittest.mock import patch
 import urllib.error
@@ -11,6 +12,18 @@ import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ai_chat
 import app
+import setup_ai
+
+
+class SetupTests(unittest.TestCase):
+    def test_save_validates_and_keeps_existing_key(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(setup_ai, 'ROOT', Path(folder)):
+            setup_ai.save('test-secret', '')
+            path = Path(folder) / 'ai_config.local.json'
+            self.assertEqual(json.loads(path.read_text())['model'], 'gpt-5-mini')
+            with self.assertRaises(ValueError):
+                setup_ai.save('bad key', '')
+            self.assertEqual(json.loads(path.read_text())['api_key'], 'test-secret')
 
 
 class ChatTests(unittest.TestCase):
