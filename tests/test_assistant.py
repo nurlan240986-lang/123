@@ -47,6 +47,14 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(result['message'], 'Бірінші жауап.\nЕкінші бөлік.')
         self.assertEqual(result['source'], 'ai')
 
+    def test_prompt_uses_selected_conversation_language(self):
+        for locale, name in [('kk-KZ', 'Kazakh'), ('ru-RU', 'Russian'), ('en-US', 'English')]:
+            def fake(request, timeout):
+                self.assertIn('Answer in ' + name, json.loads(request.data)['instructions'])
+                return io.BytesIO(json.dumps({'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'answer'}]}]}).encode())
+            with self.subTest(locale=locale), patch.object(ai_chat, 'settings', return_value=('test-secret', 'gpt-5-mini')), patch.object(ai_chat.urllib.request, 'urlopen', side_effect=fake):
+                self.assertEqual(ai_chat.ask('question', language=locale)['language'], locale)
+
     def test_missing_key(self):
         with patch.object(ai_chat, 'settings', return_value=('', 'gpt-5-mini')):
             with self.assertRaisesRegex(ValueError, 'SETUP_AI'):
@@ -74,7 +82,7 @@ class ChatTests(unittest.TestCase):
 
 class RoutingTests(unittest.TestCase):
     def test_questions_never_launch_programs(self):
-        for question in ('Word деген не?', 'Калькулятор қалай жұмыс істейді?', 'Что такое блокнот?', 'Word бағдарламасын түсіндір'):
+        for question in ('Word деген не?', 'Калькулятор қалай жұмыс істейді?', 'Что такое блокнот?', 'Word бағдарламасын түсіндір', 'How to open Word', 'Explain notepad'):
             self.assertIsNone(app.resolve(question))
 
     def test_supported_commands(self):
@@ -112,7 +120,7 @@ class ServerTests(unittest.TestCase):
             code, data = self.post({'text': 'Word деген не?', 'history': [], 'mode': 'auto'})
             self.assertEqual(code, 200)
             self.assertEqual(data['source'], 'ai')
-            ask.assert_called_once_with('Word деген не?', [])
+            ask.assert_called_once_with('Word деген не?', [], 'kk-KZ')
             launch.assert_not_called()
 
     def test_chat_mode_never_launches(self):
@@ -130,6 +138,29 @@ class ServerTests(unittest.TestCase):
         code, result = self.post({'action': 'system'})
         self.assertEqual(code, 200)
         self.assertGreater(result['stats']['memory_total_gb'], 0)
+
+    def test_selected_languages_reach_commands_and_chat(self):
+        for language, greeting in [('kk-KZ', 'Сәлем'), ('ru-RU', 'Здравствуйте'), ('en-US', 'Hello')]:
+            with self.subTest(language=language):
+                code, result = self.post({'action': 'hello', 'language': language})
+                self.assertEqual(code, 200)
+                self.assertIn(greeting, result['message'])
+                self.assertEqual(result['language'], language)
+                with patch.object(app.ai_chat, 'ask', return_value={'message': 'answer'}) as ask:
+                    self.assertEqual(self.post({'text': 'Explain Word', 'language': language})[0], 200)
+                    ask.assert_called_once_with('Explain Word', [], language)
+
+    def test_invalid_language_is_rejected_before_action(self):
+        for language in ('fr-FR', None, {}, 12):
+            with self.subTest(language=language), patch.object(app, 'launch') as launch, patch.object(app.ai_chat, 'ask') as ask:
+                self.assertEqual(self.post({'action': 'word', 'language': language})[0], 400)
+                launch.assert_not_called()
+                ask.assert_not_called()
+
+    def test_speech_receives_selected_locale(self):
+        with patch.object(app, 'speak_windows') as speak:
+            self.assertEqual(self.post({'text': 'Hello', 'language': 'en-US'}, path='/api/speak')[0], 200)
+            speak.assert_called_once_with('Hello', 'en-US')
 
     def test_auth_and_origin(self):
         self.assertEqual(self.post({'action': 'time'}, token='invalid')[0], 403)

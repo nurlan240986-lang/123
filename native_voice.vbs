@@ -1,7 +1,7 @@
 Option Explicit
 On Error Resume Next
-Dim stream, message, voice, description
-If WScript.Arguments.Count <> 1 Then
+Dim stream, message, voice, description, locale, voices, token, selected
+If WScript.Arguments.Count <> 2 Then
     WScript.Echo "Speech text file is missing."
     WScript.Quit 1
 End If
@@ -30,6 +30,24 @@ If voice.GetVoices.Count = 0 Then
     WScript.Echo "No Windows SAPI voice is installed."
     WScript.Quit 1
 End If
+locale = WScript.Arguments(1)
+Select Case locale
+    Case "kk-KZ": Set voices = voice.GetVoices("Language=43f")
+    Case "ru-RU": Set voices = voice.GetVoices("Language=419")
+    Case "en-US": Set voices = voice.GetVoices("Language=409")
+    Case Else
+        WScript.Echo "Unsupported speech language."
+        WScript.Quit 1
+End Select
+If Err.Number <> 0 Then
+    WScript.Echo "Cannot list voices for " & locale & ": " & Err.Description
+    WScript.Quit 1
+End If
+If voices.Count = 0 Then
+    WScript.Echo "No Windows SAPI voice is installed for " & locale & ". Use a matching browser voice."
+    WScript.Quit 1
+End If
+Set voice.Voice = voices.Item(0)
 ' 16 = SVSFIsNotXML: the text is spoken literally.
 voice.Speak message, 16
 If Err.Number <> 0 Then

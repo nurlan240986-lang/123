@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psutil
 import ai_chat
+import languages
 
 ROOT = Path(__file__).resolve().parent
 TOKEN = secrets.token_urlsafe(32)
@@ -70,7 +71,7 @@ def resolve(text):
     if text in ('сағат қанша', 'сағат қанша?', 'уақытты айт', 'который час', 'который час?', 'what time is it', 'what time is it?', 'time'):
         return 'time'
     # Questions mentioning a program must not launch that program.
-    if '?' in text or any(word in text for word in ('деген', 'қалай', 'почему', 'зачем', 'что такое')):
+    if '?' in text or any(word in text for word in ('деген', 'қалай', 'түсіндір', 'почему', 'зачем', 'что такое', 'расскажи')) or re.search(r'\b(how|what|why|explain|describe)\b', text):
         return None
     opening = re.search(r'(^|\s)(аш\w*|откр\w*|запуст\w*|open|launch)(\s|$)', text)
     if opening and any(word in text for word in ('калькулятор', 'calculator')):
@@ -79,29 +80,44 @@ def resolve(text):
         return 'notepad'
     if opening and any(word in text for word in ('word', 'ворд', 'уорд')):
         return 'word'
-    if text == 'system check' or (any(word in text for word in ('жүйе', 'систем', 'компьютер')) and any(word in text for word in ('тексер', 'провер'))):
+    if text in ('system check', 'check system', 'check the system') or (any(word in text for word in ('жүйе', 'систем', 'компьютер')) and any(word in text for word in ('тексер', 'провер'))):
         return 'system'
     if text in ('сәлем', 'сәлем, jarvis', 'привет', 'hello'):
         return 'hello'
     return None
 
 
-def execute(action):
+def execute(action, language='kk-KZ'):
+    language = languages.validate(language)
     if action in ('calculator', 'notepad', 'word'):
         launch(action)
-        label = {'calculator': 'Калькулятор', 'notepad': 'Блокнот', 'word': 'Microsoft Word'}[action]
-        return {'message': label + ' ашуға пәрмен жіберілді.'}
+        labels = {
+            'kk-KZ': {'calculator': 'Калькулятор', 'notepad': 'Блокнот', 'word': 'Microsoft Word'},
+            'ru-RU': {'calculator': 'Калькулятор', 'notepad': 'Блокнот', 'word': 'Microsoft Word'},
+            'en-US': {'calculator': 'Calculator', 'notepad': 'Notepad', 'word': 'Microsoft Word'},
+        }
+        label = labels[language][action]
+        templates = {'kk-KZ': '{} ашуға пәрмен жіберілді.', 'ru-RU': 'Отправлена команда на запуск: {}.', 'en-US': 'Sent a command to open {}.'}
+        return {'message': templates[language].format(label)}
     if action == 'system':
         stats = system_report()
-        return {'message': f"Процессор жүктемесі {stats['cpu']} пайыз. Жедел жад {stats['memory_percent']} пайыз пайдаланылуда. Дискіде {stats['disk_free_gb']} гигабайт бос орын бар.", 'stats': stats}
+        templates = {
+            'kk-KZ': 'Процессор жүктемесі {cpu} пайыз. Жедел жад {memory_percent} пайыз пайдаланылуда. Дискіде {disk_free_gb} гигабайт бос орын бар.',
+            'ru-RU': 'Загрузка процессора: {cpu} процентов. Использование оперативной памяти: {memory_percent} процентов. Свободно на диске: {disk_free_gb} гигабайт.',
+            'en-US': 'CPU usage is {cpu} percent. Memory usage is {memory_percent} percent. There are {disk_free_gb} gigabytes free on the disk.',
+        }
+        return {'message': templates[language].format(**stats), 'stats': stats}
     if action == 'time':
-        return {'message': 'Қазір сағат ' + datetime.datetime.now().strftime('%H:%M')}
+        prefix = {'kk-KZ': 'Қазір сағат ', 'ru-RU': 'Сейчас ', 'en-US': 'The time is '}
+        return {'message': prefix[language] + datetime.datetime.now().strftime('%H:%M')}
     if action == 'hello':
-        return {'message': 'Сәлем! Мен сіздің JARVIS көмекшіңізбін. Пәрмен беріңіз.'}
+        messages = {'kk-KZ': 'Сәлем! Мен сіздің JARVIS көмекшіңізбін. Пәрмен беріңіз.', 'ru-RU': 'Здравствуйте! Я ваш помощник JARVIS. Задайте вопрос или дайте команду.', 'en-US': 'Hello! I am JARVIS, your assistant. Ask a question or give me a command.'}
+        return {'message': messages[language]}
     raise ValueError('Пәрмен түсініксіз. Экрандағы пәрмендердің бірін таңдаңыз.')
 
 
-def speak_windows(text):
+def speak_windows(text, language='kk-KZ'):
+    language = languages.validate(language)
     if sys.platform != 'win32':
         raise RuntimeError('Жүйелік дыбыстау тек Windows-та қолжетімді.')
     # Native SAPI automation avoids starting the PowerShell/.NET host.
@@ -116,7 +132,7 @@ def speak_windows(text):
                 handle.write(text)
                 filename = handle.name
             result = subprocess.run(
-                [str(host), '//Nologo', '//U', str(ROOT / 'native_voice.vbs'), filename],
+                [str(host), '//Nologo', '//U', str(ROOT / 'native_voice.vbs'), filename, language],
                 capture_output=True, timeout=35, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
             )
             if result.returncode:
@@ -173,11 +189,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Сұрау пішімі жарамсыз.')
             if self.path == '/api/status':
                 return self.send_json(200, ai_chat.public_status())
+            language = languages.validate(data.get('language', 'kk-KZ'))
             if self.path == '/api/speak':
                 message = data.get('text', '')
                 if not isinstance(message, str) or not 0 < len(message) <= 1000:
                     raise ValueError('Дыбыстау мәтіні жарамсыз.')
-                speak_windows(message)
+                speak_windows(message, language)
                 return self.send_json(200, {'ok': True})
             if 'action' in data:
                 action = data['action']
@@ -192,8 +209,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Режим жарамсыз.')
                 action = resolve(text) if mode != 'chat' else None
                 if action is None and mode != 'command':
-                    return self.send_json(200, ai_chat.ask(text, data.get('history', [])))
-            result = execute(action)
+                    return self.send_json(200, ai_chat.ask(text, data.get('history', []), language))
+            result = execute(action, language)
+            result['language'] = language
             result['source'] = 'local'
             self.send_json(200, result)
         except (ValueError, json.JSONDecodeError) as exc:
