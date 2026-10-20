@@ -8,3 +8,7 @@ ai_config.local.tmp
 !.env.example
 *.log
 *.zip
+
+apps.local.json
+apps.local.tmp
+JARVIS_Workspace/
