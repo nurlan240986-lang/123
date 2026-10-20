@@ -1,5 +1,6 @@
 """OpenAI Responses API adapter. Credentials stay in the local Python process."""
 import json
+import languages
 import os
 from pathlib import Path
 import socket
@@ -52,7 +53,8 @@ def conversation(history):
     return result
 
 
-def ask(question, history=None):
+def ask(question, history=None, language='kk-KZ'):
+    language = languages.validate(language)
     if not isinstance(question, str) or not 0 < len(question.strip()) <= 4000:
         raise ValueError('Сұрақ 1–4000 таңбадан тұруы керек.')
     key, model = settings()
@@ -64,7 +66,8 @@ def ask(question, history=None):
         'model': model,
         'instructions': (
             'You are JARVIS, a helpful desktop companion for a college teacher in Kazakhstan. '
-            'Answer in Kazakh unless the user requests another language. Be clear and practical. '
+            f'Answer in {languages.SUPPORTED[language]}, the selected conversation language. '
+            'Follow an explicit request to translate or quote another language when relevant. Be clear and practical. '
             'You can explain, write lessons, help with IT, programming and general questions. '
             'You have no computer control or live web access in this chat. Do not claim to have '
             'opened programs, read local files, checked hardware or browsed websites. '
@@ -111,4 +114,4 @@ def ask(question, history=None):
     answer = '\n'.join(parts).strip()
     if not answer:
         raise RuntimeError('AI мәтіндік жауап бермеді. Сұрақты қысқартып, қайта жіберіңіз.')
-    return {'message': answer, 'source': 'ai', 'model': model}
+    return {'message': answer, 'source': 'ai', 'model': model, 'language': language}
