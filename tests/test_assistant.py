@@ -12,6 +12,7 @@ import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ai_chat
 import app
+import desktop
 import setup_ai
 
 
@@ -162,12 +163,24 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.post({'text': 'Hello', 'language': 'en-US'}, path='/api/speak')[0], 200)
             speak.assert_called_once_with('Hello', 'en-US')
 
+    def test_extended_command_arguments_and_catalog(self):
+        with patch.object(desktop, 'execute', return_value={'message': 'created'}) as execute:
+            self.assertEqual(self.post({'text': 'Бума жаса: Сабақ', 'language': 'kk-KZ'})[0], 200)
+            execute.assert_called_once_with('make_folder', 'Сабақ', 'kk-KZ')
+        code, catalog = self.post({}, path='/api/catalog')
+        self.assertEqual(code, 200)
+        self.assertIn('excel', [x['id'] for x in catalog['programs']])
+        self.assertEqual(self.post({}, path='/api/catalog', token='invalid')[0], 403)
+        with patch.object(desktop, 'execute') as execute:
+            self.assertEqual(self.post({'action': 'save_note', 'argument': {}})[0], 400)
+            execute.assert_not_called()
+
     def test_auth_and_origin(self):
         self.assertEqual(self.post({'action': 'time'}, token='invalid')[0], 403)
         self.assertEqual(self.post({'action': 'time'}, origin='https://untrusted.example')[0], 403)
 
     def test_secrets_are_not_served(self):
-        for path in ('/ai_config.local.json', '/.env', '/app.py'):
+        for path in ('/ai_config.local.json', '/apps.local.json', '/JARVIS_Workspace/Note.txt', '/.env', '/app.py'):
             with self.assertRaises(urllib.error.HTTPError) as result:
                 urllib.request.urlopen(self.base + path)
             self.assertEqual(result.exception.code, 404)

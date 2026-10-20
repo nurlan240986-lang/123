@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import psutil
 import ai_chat
 import languages
+import desktop
 
 ROOT = Path(__file__).resolve().parent
 TOKEN = secrets.token_urlsafe(32)
@@ -23,34 +24,7 @@ VOICE_LOCK = threading.Lock()
 
 
 def launch(name):
-    if sys.platform != 'win32':
-        raise RuntimeError('Бағдарламаларды ашу Windows жүйесінде жұмыс істейді.')
-    if name in ('calculator', 'notepad'):
-        exe = 'calc.exe' if name == 'calculator' else 'notepad.exe'
-        subprocess.Popen([str(Path(os.environ['SystemRoot']) / 'System32' / exe)])
-        return
-    if name != 'word':
-        raise ValueError('Белгісіз бағдарлама.')
-    import winreg
-    candidates = []
-    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
-        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
-            try:
-                with winreg.OpenKey(hive, r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WINWORD.EXE', 0, winreg.KEY_READ | view) as key:
-                    candidates.append(winreg.QueryValueEx(key, None)[0].strip('"'))
-            except OSError:
-                pass
-    found = shutil.which('WINWORD.EXE')
-    if found:
-        candidates.append(found)
-    for env in ('ProgramFiles', 'ProgramFiles(x86)'):
-        for office in ('root/Office16', 'Office16', 'Office15'):
-            candidates.append(str(Path(os.environ.get(env, 'C:/Program Files')) / 'Microsoft Office' / office / 'WINWORD.EXE'))
-    for candidate in candidates:
-        if Path(candidate).is_file():
-            subprocess.Popen([candidate])
-            return
-    raise RuntimeError('Word табылмады. Microsoft Word орнатылғанын тексеріңіз.')
+    desktop.launch(name)
 
 
 def system_report():
@@ -67,28 +41,14 @@ def system_report():
 
 
 def resolve(text):
-    text = text.lower().strip().rstrip('.!')
-    if text in ('сағат қанша', 'сағат қанша?', 'уақытты айт', 'который час', 'который час?', 'what time is it', 'what time is it?', 'time'):
-        return 'time'
-    # Questions mentioning a program must not launch that program.
-    if '?' in text or any(word in text for word in ('деген', 'қалай', 'түсіндір', 'почему', 'зачем', 'что такое', 'расскажи')) or re.search(r'\b(how|what|why|explain|describe)\b', text):
-        return None
-    opening = re.search(r'(^|\s)(аш\w*|откр\w*|запуст\w*|open|launch)(\s|$)', text)
-    if opening and any(word in text for word in ('калькулятор', 'calculator')):
-        return 'calculator'
-    if opening and any(word in text for word in ('блокнот', 'notepad')):
-        return 'notepad'
-    if opening and any(word in text for word in ('word', 'ворд', 'уорд')):
-        return 'word'
-    if text in ('system check', 'check system', 'check the system') or (any(word in text for word in ('жүйе', 'систем', 'компьютер')) and any(word in text for word in ('тексер', 'провер'))):
-        return 'system'
-    if text in ('сәлем', 'сәлем, jarvis', 'привет', 'hello'):
-        return 'hello'
-    return None
+    request = desktop.parse_command(text)
+    return request['action'] if request and 'argument' not in request else None
 
 
-def execute(action, language='kk-KZ'):
+def execute(action, language='kk-KZ', argument=''):
     language = languages.validate(language)
+    if not isinstance(action, str):
+        raise ValueError('Пәрмен түсініксіз. Пәрмендер тізімін қараңыз.')
     if action in ('calculator', 'notepad', 'word'):
         launch(action)
         labels = {
@@ -113,7 +73,7 @@ def execute(action, language='kk-KZ'):
     if action == 'hello':
         messages = {'kk-KZ': 'Сәлем! Мен сіздің JARVIS көмекшіңізбін. Пәрмен беріңіз.', 'ru-RU': 'Здравствуйте! Я ваш помощник JARVIS. Задайте вопрос или дайте команду.', 'en-US': 'Hello! I am JARVIS, your assistant. Ask a question or give me a command.'}
         return {'message': messages[language]}
-    raise ValueError('Пәрмен түсініксіз. Экрандағы пәрмендердің бірін таңдаңыз.')
+    return desktop.execute(action, argument, language)
 
 
 def speak_windows(text, language='kk-KZ'):
@@ -178,7 +138,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.trusted() or self.headers.get('X-Jarvis-Token') != TOKEN:
             return self.send_json(403, {'error': 'Forbidden'})
-        if self.path not in ('/api/command', '/api/speak', '/api/status'):
+        if self.path not in ('/api/command', '/api/speak', '/api/status', '/api/catalog'):
             return self.send_json(404, {'error': 'Not found'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -190,6 +150,11 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/status':
                 return self.send_json(200, ai_chat.public_status())
             language = languages.validate(data.get('language', 'kk-KZ'))
+            if self.path == '/api/catalog':
+                return self.send_json(200, desktop.catalog())
+            argument = data.get('argument', '')
+            if not isinstance(argument, str) or len(argument) > 4000:
+                raise ValueError('Пәрмен аргументі жарамсыз.')
             if self.path == '/api/speak':
                 message = data.get('text', '')
                 if not isinstance(message, str) or not 0 < len(message) <= 1000:
@@ -207,10 +172,12 @@ class Handler(BaseHTTPRequestHandler):
                 mode = data.get('mode', 'auto')
                 if mode not in ('auto', 'chat', 'command'):
                     raise ValueError('Режим жарамсыз.')
-                action = resolve(text) if mode != 'chat' else None
+                parsed = desktop.parse_command(text) if mode != 'chat' else None
+                action = parsed['action'] if parsed else None
+                argument = parsed.get('argument', '') if parsed else ''
                 if action is None and mode != 'command':
                     return self.send_json(200, ai_chat.ask(text, data.get('history', []), language))
-            result = execute(action, language)
+            result = execute(action, language, argument)
             result['language'] = language
             result['source'] = 'local'
             self.send_json(200, result)
