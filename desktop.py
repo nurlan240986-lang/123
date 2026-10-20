@@ -34,6 +34,16 @@ PROGRAMS = {
 }
 
 
+AI_SITES = {
+    'gemini': ('Gemini', 'https://gemini.google.com/', ('gemini', 'джемини', 'гемини')),
+    'chatgpt': ('ChatGPT', 'https://chatgpt.com/', ('chatgpt', 'чатгпт', 'чат джипити')),
+    'perplexity': ('Perplexity', 'https://www.perplexity.ai/', ('perplexity', 'перплексити')),
+    'copilot': ('Microsoft Copilot', 'https://copilot.microsoft.com/', ('copilot', 'копилот')),
+    'claude': ('Claude', 'https://claude.ai/', ('claude', 'клод')),
+}
+PROGRAMS.update({name: (item[0], None, item[2]) for name, item in AI_SITES.items()})
+
+
 def tr(language, kk, ru, en):
     return {'kk-KZ': kk, 'ru-RU': ru, 'en-US': en}[languages.validate(language)]
 
@@ -122,6 +132,10 @@ def find_executable(exe):
 def launch(name):
     if sys.platform != 'win32':
         raise RuntimeError('Бағдарламаларды ашу Windows жүйесінде жұмыс істейді.')
+    if name in AI_SITES:
+        if not webbrowser.open(AI_SITES[name][1]):
+            raise RuntimeError('ЖИ сайты ашылмады. Әдепкі браузерді тексеріңіз.')
+        return
     if name == 'browser':
         if not webbrowser.open('https://www.google.com/'):
             raise RuntimeError('Әдепкі браузер ашылмады.')
@@ -152,7 +166,7 @@ def program_name(name):
 
 
 def catalog():
-    result = [{'id': name, 'name': values[0], 'aliases': list(values[2])} for name, values in PROGRAMS.items()]
+    result = [{'id': name, 'name': values[0], 'aliases': list(values[2]), 'kind': 'website' if name in AI_SITES else 'program'} for name, values in PROGRAMS.items()]
     result += [{'id': x['id'], 'name': x['name'], 'aliases': x['aliases']} for x in read_apps()]
     return {'programs': result, 'workspace': str(WORKSPACE)}
 

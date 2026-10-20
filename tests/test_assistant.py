@@ -78,7 +78,7 @@ class ChatTests(unittest.TestCase):
 
     def test_public_status_has_no_key(self):
         with patch.object(ai_chat, 'settings', return_value=('test-secret', 'gpt-5-mini')):
-            self.assertEqual(ai_chat.public_status(), {'configured': True, 'model': 'gpt-5-mini'})
+            self.assertEqual(ai_chat.public_status(), {'configured': True, 'model': 'gpt-5-mini', 'provider': 'openai'})
 
 
 class RoutingTests(unittest.TestCase):
@@ -121,7 +121,7 @@ class ServerTests(unittest.TestCase):
             code, data = self.post({'text': 'Word деген не?', 'history': [], 'mode': 'auto'})
             self.assertEqual(code, 200)
             self.assertEqual(data['source'], 'ai')
-            ask.assert_called_once_with('Word деген не?', [], 'kk-KZ')
+            ask.assert_called_once_with('Word деген не?', [], 'kk-KZ', 'openai', False)
             launch.assert_not_called()
 
     def test_chat_mode_never_launches(self):
@@ -149,7 +149,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(result['language'], language)
                 with patch.object(app.ai_chat, 'ask', return_value={'message': 'answer'}) as ask:
                     self.assertEqual(self.post({'text': 'Explain Word', 'language': language})[0], 200)
-                    ask.assert_called_once_with('Explain Word', [], language)
+                    ask.assert_called_once_with('Explain Word', [], language, 'openai', False)
 
     def test_invalid_language_is_rejected_before_action(self):
         for language in ('fr-FR', None, {}, 12):
@@ -174,6 +174,17 @@ class ServerTests(unittest.TestCase):
         with patch.object(desktop, 'execute') as execute:
             self.assertEqual(self.post({'action': 'save_note', 'argument': {}})[0], 400)
             execute.assert_not_called()
+
+    def test_selected_provider_and_web_search_forwarding(self):
+        with patch.object(ai_chat, 'ask', return_value={'message': 'answer', 'source': 'ai'}) as ask:
+            code, result = self.post({'text': 'Latest news', 'mode': 'chat', 'provider': 'gemini', 'web_search': True})
+            self.assertEqual(code, 200)
+            ask.assert_called_once_with('Latest news', [], 'kk-KZ', 'gemini', True)
+        with patch.object(ai_chat, 'settings', return_value=('test-secret', 'gemini-model')):
+            code, status = self.post({'provider': 'gemini'}, path='/api/status')
+            self.assertEqual(code, 200)
+            self.assertEqual(status['provider'], 'gemini')
+            self.assertNotIn('test-secret', json.dumps(status))
 
     def test_auth_and_origin(self):
         self.assertEqual(self.post({'action': 'time'}, token='invalid')[0], 403)
